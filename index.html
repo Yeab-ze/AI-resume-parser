@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Parser - ATS Checker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: block;
+        }
+
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .file-input-label:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .file-input-label.drag-over {
+            border-color: #764ba2;
+            background: #e8e9ff;
+            transform: scale(1.02);
+        }
+
+        .file-input-label svg {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            color: #667eea;
+        }
+
+        .file-input-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-input-text strong {
+            color: #333;
+            font-size: 16px;
+        }
+
+        .file-input-text span {
+            color: #666;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-name {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #e8f5e9;
+            border-radius: 6px;
+            color: #2e7d32;
+            font-size: 13px;
+            display: none;
+        }
+
+        .file-name.show {
+            display: block;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 100px;
+            transition: border-color 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-reset {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-reset:hover {
+            background: #eeeeee;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+        }
+
+        .alert-success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #4caf50;
+        }
+
+        .spinner {
+            display: none;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .spinner.show {
+            display: block;
+        }
+
+        .spinner svg {
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .result-section {
+            margin-bottom: 25px;
+        }
+
+        .result-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .score-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .score-value {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .score-label {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .pass-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .pass-badge.pass {
+            background: #4caf50;
+            color: white;
+        }
+
+        .pass-badge.fail {
+            background: #f44336;
+            color: white;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            background: #f8f9ff;
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            color: #333;
+            word-break: break-all;
+        }
+
+        .skills-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .skill-tag {
+            background: #667eea;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .skill-tag.soft {
+            background: #764ba2;
+        }
+
+        .list-item {
+            background: #f8f9ff;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .employment-item {
+            background: #f8f9ff;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .employment-role {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .employment-company {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .employment-duration {
+            color: #999;
+            font-size: 13px;
+        }
+
+        @media (max-width: 600px) {
+            .content {
+                padding: 25px 20px;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .header {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 Resume Parser</h1>
+            <p>AI-Powered ATS Compatibility Checker</p>
+        </div>
+
+        <div class="content">
+            <!-- Alerts -->
+            <div id="alertError" class="alert alert-error"></div>
+            <div id="alertSuccess" class="alert alert-success"></div>
+
+            <!-- Loading Spinner -->
+            <div id="spinner" class="spinner">
+                <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="#667eea" stroke-width="4"></circle>
+                </svg>
+                <p style="margin-top: 10px; color: #667eea;">Processing your resume...</p>
+            </div>
+
+            <!-- Upload Form -->
+            <form id="resumeForm" enctype="multipart/form-data">
+                <!-- Resume File Upload -->
+                <div class="form-group">
+                    <label>Upload Resume (PDF)</label>
+                    <div class="file-input-wrapper">
+                        <label for="pdfFile" class="file-input-label" id="dragZone">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <div class="file-input-text">
+                                <strong>Click to upload or drag and drop</strong>
+                                <span>PDF file (max 5MB)</span>
+                            </div>
+                        </label>
+                        <input type="file" id="pdfFile" name="pdf_doc" accept=".pdf" required>
+                        <div id="fileName" class="file-name"></div>
+                    </div>
+                </div>
+
+                <!-- Job Description (Optional) -->
+                <div class="form-group">
+                    <label for="jobDesc">Job Description (Optional)</label>
+                    <textarea id="jobDesc" name="job_description" placeholder="Paste a job description to get targeted matching and skill gap analysis..."></textarea>
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn-submit">Analyse Resume</button>
+                    <button type="reset" class="btn-reset">Clear</button>
+                </div>
+            </form>
+
+            <!-- Results Section -->
+            <div id="results" class="results">
+                <!-- Score Card -->
+                <div class="score-card">
+                    <div class="score-value" id="scoreValue">0</div>
+                    <div class="score-label">ATS Compatibility Score</div>
+                    <div id="passFail" class="pass-badge pass">Pass</div>
+                </div>
+
+                <!-- Contact Information -->
+                <div class="result-section">
+                    <h3>📋 Contact Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Full Name</div>
+                            <div class="info-value" id="fullName">—</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Email</div>
+                            <div class="info-value" id="email">—</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Phone</div>
+                            <div class="info-value" id="phone">—</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">LinkedIn</div>
+                            <div class="info-value" id="linkedin">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employment History -->
+                <div class="result-section" id="employmentSection" style="display: none;">
+                    <h3>💼 Employment History</h3>
+                    <div id="employmentList"></div>
+                </div>
+
+                <!-- Education -->
+                <div class="result-section" id="educationSection" style="display: none;">
+                    <h3>🎓 Education</h3>
+                    <div id="educationList"></div>
+                </div>
+
+                <!-- Technical Skills -->
+                <div class="result-section" id="technicalSection" style="display: none;">
+                    <h3>⚙️ Technical Skills</h3>
+                    <div class="skills-container" id="technicalSkills"></div>
+                </div>
+
+                <!-- Soft Skills -->
+                <div class="result-section" id="softSection" style="display: none;">
+                    <h3>🤝 Soft Skills</h3>
+                    <div class="skills-container" id="softSkills"></div>
+                </div>
+
+                <!-- Missing Keywords -->
+                <div class="result-section" id="missingSection" style="display: none;">
+                    <h3>❌ Missing Keywords (from Job Description)</h3>
+                    <div id="missingList"></div>
+                </div>
+
+                <!-- Suggestions -->
+                <div class="result-section" id="suggestionsSection" style="display: none;">
+                    <h3>💡 Improvement Suggestions</h3>
+                    <div id="suggestionsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('resumeForm');
+        const fileInput = document.getElementById('pdfFile');
+        const dragZone = document.getElementById('dragZone');
+        const fileNameDisplay = document.getElementById('fileName');
+        const spinner = document.getElementById('spinner');
+        const resultsDiv = document.getElementById('results');
+        const alertError = document.getElementById('alertError');
+        const alertSuccess = document.getElementById('alertSuccess');
+
+        // File input handling
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                fileNameDisplay.textContent = `✓ ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
+                fileNameDisplay.classList.add('show');
+            }
+        });
+
+        // Drag and drop
+        dragZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragZone.classList.add('drag-over');
+        });
+
+        dragZone.addEventListener('dragleave', () => {
+            dragZone.classList.remove('drag-over');
+        });
+
+        dragZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!fileInput.files.length) {
+                showAlert('alertError', 'Please select a PDF file');
+                return;
+            }
+
+            const formData = new FormData(form);
+            spinner.classList.add('show');
+            resultsDiv.classList.remove('show');
+            alertError.classList.remove('show');
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Extract error if present
+                const errorDiv = doc.querySelector('[data-error]');
+                if (errorDiv) {
+                    const error = errorDiv.getAttribute('data-error');
+                    showAlert('alertError', error);
+                    spinner.classList.remove('show');
+                    return;
+                }
+
+                // Extract data from response
+                const dataScript = doc.querySelector('[data-parsed-data]');
+                if (dataScript) {
+                    const data = JSON.parse(dataScript.getAttribute('data-parsed-data'));
+                    displayResults(data);
+                    showAlert('alertSuccess', 'Resume parsed successfully!');
+                } else {
+                    showAlert('alertError', 'Could not parse response from server');
+                }
+            } catch (error) {
+                showAlert('alertError', `Error: ${error.message}`);
+            } finally {
+                spinner.classList.remove('show');
+            }
+        });
+
+        function showAlert(elementId, message) {
+            const alertDiv = document.getElementById(elementId);
+            alertDiv.textContent = message;
+            alertDiv.classList.add('show');
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        function displayResults(data) {
+            if (data.error) {
+                showAlert('alertError', data.error);
+                return;
+            }
+
+            // Score and Pass/Fail
+            const score = data.resume_score || 0;
+            document.getElementById('scoreValue').textContent = score;
+            const passFail = document.getElementById('passFail');
+            passFail.textContent = data.pass_fail || 'Fail';
+            passFail.className = `pass-badge ${(data.pass_fail === 'Pass' ? 'pass' : 'fail')}`;
+
+            // Contact Info
+            document.getElementById('fullName').textContent = data.full_name || '—';
+            document.getElementById('email').textContent = data.email || '—';
+            document.getElementById('phone').textContent = data.phone || '—';
+            document.getElementById('linkedin').textContent = data.linkedin ? 
+                `<a href="${data.linkedin}" target="_blank">${data.linkedin}</a>` : '—';
+
+            // Employment
+            if (data.employment_details && data.employment_details.length > 0) {
+                const empList = document.getElementById('employmentList');
+                empList.innerHTML = data.employment_details.map(emp => `
+                    <div class="employment-item">
+                        <div class="employment-role">${emp.role || 'N/A'}</div>
+                        <div class="employment-company">${emp.company || 'N/A'}</div>
+                        <div class="employment-duration">${emp.duration || 'N/A'}</div>
+                    </div>
+                `).join('');
+                document.getElementById('employmentSection').style.display = 'block';
+            }
+
+            // Education
+            if (data.education && data.education.length > 0) {
+                const eduList = document.getElementById('educationList');
+                eduList.innerHTML = data.education.map(edu => `
+                    <div class="employment-item">
+                        <div class="employment-role">${edu.degree || 'N/A'}</div>
+                        <div class="employment-company">${edu.institution || 'N/A'}</div>
+                        <div class="employment-duration">${edu.field || ''}</div>
+                    </div>
+                `).join('');
+                document.getElementById('educationSection').style.display = 'block';
+            }
+
+            // Technical Skills
+            if (data.technical_skills && data.technical_skills.length > 0) {
+                const techSkills = document.getElementById('technicalSkills');
+                techSkills.innerHTML = data.technical_skills.map(skill => 
+                    `<span class="skill-tag">${skill}</span>`
+                ).join('');
+                document.getElementById('technicalSection').style.display = 'block';
+            }
+
+            // Soft Skills
+            if (data.soft_skills && data.soft_skills.length > 0) {
+                const softSkills = document.getElementById('softSkills');
+                softSkills.innerHTML = data.soft_skills.map(skill => 
+                    `<span class="skill-tag soft">${skill}</span>`
+                ).join('');
+                document.getElementById('softSection').style.display = 'block';
+            }
+
+            // Missing Keywords
+            if (data.missing_keywords && data.missing_keywords.length > 0) {
+                const missingList = document.getElementById('missingList');
+                missingList.innerHTML = data.missing_keywords.map(keyword => 
+                    `<div class="list-item">• ${keyword}</div>`
+                ).join('');
+                document.getElementById('missingSection').style.display = 'block';
+            }
+
+            // Suggestions
+            if (data.suggestions && data.suggestions.length > 0) {
+                const suggestionsList = document.getElementById('suggestionsList');
+                suggestionsList.innerHTML = data.suggestions.map(suggestion => 
+                    `<div class="list-item">• ${suggestion}</div>`
+                ).join('');
+                document.getElementById('suggestionsSection').style.display = 'block';
+            }
+
+            resultsDiv.classList.add('show');
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Reset form
+        form.addEventListener('reset', () => {
+            fileNameDisplay.classList.remove('show');
+            resultsDiv.classList.remove('show');
+            alertError.classList.remove('show');
+        });
+    </script>
+</body>
+</html>

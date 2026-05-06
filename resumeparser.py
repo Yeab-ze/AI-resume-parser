@@ -1,55 +1,70 @@
-# import libraries
+"""Resume parsing module using OpenRouter or Google Gemini API."""
+
 from openai import OpenAI
 import json
 import re
 import yaml
 import os
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 CONFIG_PATH = "config.yaml"
 
+
 def _load_api_key():
-    """Load API key from config.yaml or environment variables."""
+    """
+    Load API key from config.yaml or environment variables.
+    Priority: Environment variables > config.yaml
+    """
     api_key = None
 
-    # Try config file first
+    # Try environment variables first (higher priority)
+    api_key = os.environ.get('OPENROUTER_API_KEY') or os.environ.get('OPENAI_API_KEY')
+    
+    if api_key and api_key.strip() not in ["", "your_api_key_here", "YOUR KEY HERE"]:
+        logger.info("API key loaded from environment variables")
+        return api_key
+
+    # Fall back to config file
     if os.path.exists(CONFIG_PATH):
         try:
-            with open(CONFIG_PATH) as file:
+            with open(CONFIG_PATH, 'r') as file:
                 config_data = yaml.load(file, Loader=yaml.FullLoader)
-                api_key = config_data.get('OPENROUTER_API_KEY') or config_data.get('OPENAI_API_KEY')
+                if config_data:
+                    api_key = config_data.get('OPENROUTER_API_KEY') or config_data.get('OPENAI_API_KEY')
+                    if api_key and api_key.strip() not in ["", "your_api_key_here", "YOUR KEY HERE"]:
+                        logger.info("API key loaded from config.yaml")
+                        return api_key
         except Exception as e:
-            print(f"Warning: Could not read config.yaml: {e}")
+            logger.warning(f"Could not read config.yaml: {e}")
 
-    # Fall back to environment variables
-    if not api_key or api_key.strip() in ["YOUR KEY HERE", "your_api_key_here", ""]:
-        api_key = os.environ.get('OPENROUTER_API_KEY') or os.environ.get('OPENAI_API_KEY')
-
-    return api_key
+    return None
 
 
 def _clean_and_parse_json(raw: str) -> dict:
     """
-    Robustly extract and parse a JSON object from a model response
-    that may contain markdown fences, extra text, or minor syntax errors.
+    Robustly extract and parse JSON from model response.
+    Handles markdown fences, extra text, and minor syntax errors.
     """
     if not raw or not raw.strip():
         raise ValueError("Empty response from model")
 
     text = raw.strip()
 
-    # 1. Strip markdown fences (```json ... ``` or ``` ... ```)
+    # Strip markdown fences
     text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
     text = text.strip()
 
-    # 2. Try direct parse first
+    # Try direct parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 3. Extract the first {...} block from the text
+    # Extract first {...} block
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         candidate = match.group(0)
@@ -58,72 +73,114 @@ def _clean_and_parse_json(raw: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-        # 4. Fix common issues: trailing commas before } or ]
+        # Fix trailing commas
         fixed = re.sub(r',\s*([}\]])', r'\1', candidate)
         try:
             return json.loads(fixed)
         except json.JSONDecodeError:
             pass
 
-    raise ValueError(f"Could not extract valid JSON from response:\n{raw[:500]}")
+    raise ValueError(f"Could not extract valid JSON from response:\n{raw[:300]}")
 
 
-def ats_extractor(resume_data: str, job_description: str = None) -> dict:
-    """
-    Extract structured ATS information from resume text using an LLM.
-    Returns a dict with parsed fields, or a dict with an 'error' key on failure.
-    """
-    api_key = _load_api_key()
+def _build_prompt(job_description: str = None) -> str:
+    """Build the system prompt for resume parsing."""
+    
+    jd_section = ""
+    if job_description:
+        jd_section = f"\n\nJob Description to match against:\n{job_description}"
 
-    if not api_key:
-        return {
-            "error": "API key is missing. Add OPENROUTER_API_KEY or OPENAI_API_KEY to config.yaml or set it as an environment variable."
-        }
-
-    # Build prompt
-    jd_note = f"\n\nJob Description to match against:\n{job_description}" if job_description else ""
-    prompt = f"""You are a professional resume parser. Extract information from the resume and return ONLY a valid JSON object — no markdown, no explanation, no extra text before or after.
+    prompt = f"""You are a professional resume parser and ATS analyst. Extract structured information from the resume and return ONLY a valid JSON object — no markdown, no explanation, no extra text.
 
 The JSON must have exactly these keys:
 {{
   "full_name": "string or null",
   "email": "string or null",
+  "phone": "string or null",
   "github": "string or null",
   "linkedin": "string or null",
   "employment_details": [
-    {{"company": "...", "role": "...", "duration": "..."}}
+    {{"company": "string", "role": "string", "duration": "string"}}
+  ],
+  "education": [
+    {{"institution": "string", "degree": "string", "field": "string"}}
   ],
   "technical_skills": ["skill1", "skill2"],
   "soft_skills": ["skill1", "skill2"],
   "resume_score": <integer 0-100>,
   "pass_fail": "Pass or Fail",
+  "missing_keywords": ["keyword1", "keyword2"],
   "suggestions": ["improvement1", "improvement2"]
 }}
 
+Scoring Rules:
+- Format and structure: 20 points
+- Contact information: 15 points
+- Work experience clarity: 20 points
+- Skills presentation: 20 points
+- ATS compatibility: 25 points
+- Pass if score >= 70, otherwise Fail
+
 Rules:
-- resume_score >= 70 means pass_fail = "Pass", otherwise "Fail"
-- If a field is not found, use null or an empty list
-- Return ONLY the JSON object, nothing else{jd_note}"""
+- If a field is not found, use null or empty list
+- Return ONLY the JSON object, nothing else
+- employment_details and education should be empty lists if not found
+- missing_keywords should highlight keywords from job description not in resume
+- suggestions should be actionable improvements{jd_section}"""
+
+    return prompt
+
+
+def ats_extractor(resume_data: str, job_description: str = None) -> dict:
+    """
+    Extract structured ATS information from resume text using an LLM.
+    
+    Args:
+        resume_data: Extracted text from resume
+        job_description: Optional job description for matching
+        
+    Returns:
+        Dictionary with parsed fields or error information
+    """
+    
+    api_key = _load_api_key()
+
+    if not api_key:
+        error_msg = "API key not found. Set OPENROUTER_API_KEY or OPENAI_API_KEY in environment or config.yaml"
+        logger.error(error_msg)
+        return {"error": error_msg}
+
+    # Validate resume data
+    if not resume_data or not resume_data.strip():
+        return {"error": "Resume text is empty"}
+
+    # Build prompt
+    system_prompt = _build_prompt(job_description)
 
     messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": resume_data}
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Parse this resume:\n\n{resume_data}"}
     ]
 
-    # Determine provider and model
+    # Determine provider and model based on API key format
     if api_key.startswith("AIza"):
         base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
         model_name = "gemini-1.5-flash"
+        logger.info("Using Google Gemini API")
     else:
         base_url = "https://openrouter.ai/api/v1"
         model_name = "meta-llama/llama-3.1-70b-instruct"
+        logger.info("Using OpenRouter API with Llama 3.1")
 
     client = OpenAI(base_url=base_url, api_key=api_key)
 
     last_error = None
-    for attempt in range(3):
+    max_attempts = 3
+
+    for attempt in range(max_attempts):
         try:
-            print(f"Attempt {attempt + 1}: Calling {model_name}...")
+            logger.info(f"Attempt {attempt + 1}/{max_attempts}: Calling {model_name}...")
+            
             response = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
@@ -132,30 +189,36 @@ Rules:
             )
 
             raw_content = response.choices[0].message.content
-            print(f"Raw response (first 300 chars): {raw_content[:300]}")
+            logger.debug(f"Raw response length: {len(raw_content)} chars")
 
+            # Parse JSON response
             parsed = _clean_and_parse_json(raw_content)
+            
+            logger.info("Resume parsed successfully")
             return parsed
 
         except ValueError as ve:
-            # JSON parsing failed — log and return helpful error
-            print(f"JSON parse error on attempt {attempt + 1}: {ve}")
-            last_error = str(ve)
-            # Don't retry on parse errors — the model gave bad output
+            error_msg = f"JSON parsing error: {str(ve)}"
+            logger.error(error_msg)
             return {
-                "error": "The AI returned a response that could not be parsed as JSON. Try again.",
-                "detail": last_error
+                "error": "AI returned invalid JSON. Please try again.",
+                "detail": error_msg
             }
 
         except Exception as e:
-            err_str = str(e)
-            print(f"API error on attempt {attempt + 1}: {err_str}")
-            if "429" in err_str and attempt < 2:
-                wait = 30 * (attempt + 1)
-                print(f"Rate limited. Waiting {wait}s before retry...")
-                time.sleep(wait)
-                last_error = err_str
-            else:
-                return {"error": f"AI request failed: {err_str}"}
+            error_str = str(e)
+            logger.warning(f"API error on attempt {attempt + 1}: {error_str}")
+            last_error = error_str
 
-    return {"error": f"All retry attempts failed. Last error: {last_error}"}
+            # Handle rate limiting with exponential backoff
+            if "429" in error_str and attempt < max_attempts - 1:
+                wait_time = 30 * (attempt + 1)
+                logger.info(f"Rate limited. Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+                continue
+
+            # Don't retry on other errors
+            if attempt == max_attempts - 1:
+                return {"error": f"Failed to process resume: {error_str}"}
+
+    return {"error": f"Max retry attempts reached. Last error: {last_error}"}
