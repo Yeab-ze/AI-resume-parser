@@ -125,5 +125,5 @@ def internal_error(error):
     return render_template('index.html', error="Internal server error. Please try again."), 500
 
 
-if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=8000, debug=True)
+def handler(request):
+    return app(request.environ, request.start_response)
