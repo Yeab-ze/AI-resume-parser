@@ -20,9 +20,9 @@ A Flask web application that parses resumes in PDF format using AI (via OpenRout
 
 ## Screenshots
 
-![Results](./assets/hero.png)
+![Hero](assets/hero.png)
 
-![Results](./assets/result.png)
+![Results](assets/result.png)
 
 ---
 
